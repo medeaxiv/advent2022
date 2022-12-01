@@ -1,0 +1,40 @@
+# Advent of Code 2022 - 1
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+## Part 1
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+elves =
+  Kino.Input.read(input)
+  |> String.split("\n\n")
+  |> Enum.map(fn elf ->
+    elf
+    |> String.split("\n")
+    |> Enum.map(&String.to_integer/1)
+    |> Enum.sum()
+  end)
+
+Enum.max(elves)
+```
+
+## Part 2
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+elves
+|> Enum.sort(&>/2)
+|> Enum.take(3)
+|> Enum.sum()
+```
