@@ -1,0 +1,99 @@
+# Advent of Code 2022 - 2
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+plan =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(fn line ->
+    line
+    |> String.split(" ")
+  end)
+```
+
+```elixir
+defmodule RPS do
+  defp decode_shape("A"), do: :rock
+  defp decode_shape("B"), do: :paper
+  defp decode_shape("C"), do: :scissors
+  defp decode_shape("X"), do: :rock
+  defp decode_shape("Y"), do: :paper
+  defp decode_shape("Z"), do: :scissors
+
+  defp decode_outcome("X"), do: :lose
+  defp decode_outcome("Y"), do: :draw
+  defp decode_outcome("Z"), do: :win
+
+  defp shape_for_outcome(a, :draw), do: a
+  defp shape_for_outcome(:rock, :win), do: :paper
+  defp shape_for_outcome(:rock, :lose), do: :scissors
+  defp shape_for_outcome(:paper, :win), do: :scissors
+  defp shape_for_outcome(:paper, :lose), do: :rock
+  defp shape_for_outcome(:scissors, :win), do: :rock
+  defp shape_for_outcome(:scissors, :lose), do: :paper
+
+  defp outcome(a, a), do: :draw
+  defp outcome(:rock, :paper), do: :win
+  defp outcome(:rock, :scissors), do: :lose
+  defp outcome(:paper, :scissors), do: :win
+  defp outcome(:paper, :rock), do: :lose
+  defp outcome(:scissors, :rock), do: :win
+  defp outcome(:scissors, :paper), do: :lose
+
+  defp shape_score(:rock), do: 1
+  defp shape_score(:paper), do: 2
+  defp shape_score(:scissors), do: 3
+
+  defp outcome_score(:lose), do: 0
+  defp outcome_score(:draw), do: 3
+  defp outcome_score(:win), do: 6
+
+  def interpret_plan_incorrect([opponent, self]) do
+    [decode_shape(opponent), decode_shape(self)]
+  end
+
+  def interpret_plan([opponent, outcome]) do
+    opponent_shape = decode_shape(opponent)
+    desired_outcome = decode_outcome(outcome)
+    [opponent_shape, shape_for_outcome(opponent_shape, desired_outcome)]
+  end
+
+  def score([opponent, self]) do
+    outcome = outcome(opponent, self)
+    shape_score(self) + outcome_score(outcome)
+  end
+end
+```
+
+## Part 1
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+plan
+|> Enum.map(&RPS.interpret_plan_incorrect/1)
+|> Enum.map(&RPS.score/1)
+|> Enum.sum()
+```
+
+## Part 2
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+plan
+|> Enum.map(&RPS.interpret_plan/1)
+|> Enum.map(&RPS.score/1)
+|> Enum.sum()
+```
