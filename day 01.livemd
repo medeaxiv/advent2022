@@ -12,8 +12,6 @@ input = Kino.Input.textarea("Input")
 
 ## Part 1
 
-<!-- livebook:{"reevaluate_automatically":true} -->
-
 ```elixir
 calories =
   Kino.Input.read(input)
@@ -29,8 +27,6 @@ Enum.max(calories)
 ```
 
 ## Part 2
-
-<!-- livebook:{"reevaluate_automatically":true} -->
 
 ```elixir
 calories

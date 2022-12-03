@@ -10,8 +10,6 @@ Mix.install([{:kino, "~> 0.7.0"}])
 input = Kino.Input.textarea("Input")
 ```
 
-<!-- livebook:{"reevaluate_automatically":true} -->
-
 ```elixir
 plan =
   Kino.Input.read(input)
@@ -78,8 +76,6 @@ end
 
 ## Part 1
 
-<!-- livebook:{"reevaluate_automatically":true} -->
-
 ```elixir
 plan
 |> Enum.map(&RPS.interpret_plan_incorrect/1)
@@ -88,8 +84,6 @@ plan
 ```
 
 ## Part 2
-
-<!-- livebook:{"reevaluate_automatically":true} -->
 
 ```elixir
 plan

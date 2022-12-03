@@ -43,8 +43,6 @@ end)
 
 ## Part 2
 
-<!-- livebook:{"reevaluate_automatically":true} -->
-
 ```elixir
 bags
 |> Enum.map(&MapSet.new/1)

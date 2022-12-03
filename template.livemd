@@ -12,15 +12,11 @@ input = Kino.Input.textarea("Input")
 
 ## Part 1
 
-<!-- livebook:{"reevaluate_automatically":true} -->
-
 ```elixir
 
 ```
 
 ## Part 2
-
-<!-- livebook:{"reevaluate_automatically":true} -->
 
 ```elixir
 
