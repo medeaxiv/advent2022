@@ -1,0 +1,59 @@
+# Advent of Code 2022 - 3
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+bags =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(&String.to_charlist/1)
+```
+
+```elixir
+defmodule Bags do
+  def priority(a) when a in ?a..?z, do: a - ?a + 1
+  def priority(a) when a in ?A..?Z, do: a - ?A + 27
+end
+```
+
+## Part 1
+
+```elixir
+import Bitwise
+
+bags
+|> Enum.map(fn bag ->
+  bag
+  |> Enum.chunk_every(Enum.count(bag) >>> 1)
+  |> Enum.map(&MapSet.new/1)
+  |> Enum.reduce(&MapSet.intersection/2)
+  |> Enum.at(0)
+  |> Bags.priority()
+end)
+|> Enum.sum()
+```
+
+## Part 2
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+bags
+|> Enum.map(&MapSet.new/1)
+|> Enum.chunk_every(3)
+|> Enum.map(fn group ->
+  group
+  |> Enum.reduce(&MapSet.intersection/2)
+  |> Enum.at(0)
+  |> Bags.priority()
+end)
+|> Enum.sum()
+```
