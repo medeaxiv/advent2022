@@ -1,0 +1,44 @@
+# Advent of Code 2022 - 4
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+range_pairs =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(fn line ->
+    line
+    |> String.split([",", "-"])
+    |> Enum.map(&String.to_integer/1)
+    |> Enum.chunk_every(2)
+    |> Enum.map(fn [a, b] -> a..b end)
+  end)
+```
+
+## Part 1
+
+```elixir
+range_pairs
+|> Enum.filter(fn [a, b] ->
+  Enum.all?(a, &(&1 in b)) or Enum.all?(b, &(&1 in a))
+end)
+|> Enum.count()
+```
+
+## Part 2
+
+```elixir
+range_pairs
+|> Enum.filter(fn [a, b] ->
+  Enum.any?(a, &(&1 in b))
+end)
+|> Enum.count()
+```
