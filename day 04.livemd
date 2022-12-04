@@ -26,9 +26,13 @@ range_pairs =
 ## Part 1
 
 ```elixir
+defmodule RangeExt do
+  def contains?(a1..a2, b1..b2), do: a1 >= b1 and a2 <= b2
+end
+
 range_pairs
 |> Enum.filter(fn [a, b] ->
-  Enum.all?(a, &(&1 in b)) or Enum.all?(b, &(&1 in a))
+  RangeExt.contains?(a, b) or RangeExt.contains?(b, a)
 end)
 |> Enum.count()
 ```
@@ -38,7 +42,7 @@ end)
 ```elixir
 range_pairs
 |> Enum.filter(fn [a, b] ->
-  Enum.any?(a, &(&1 in b))
+  not Range.disjoint?(a, b)
 end)
 |> Enum.count()
 ```
