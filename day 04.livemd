@@ -27,7 +27,7 @@ range_pairs =
 
 ```elixir
 defmodule RangeExt do
-  def contains?(a1..a2, b1..b2), do: a1 >= b1 and a2 <= b2
+  def contains?(a1..a2, b1..b2), do: a1 <= b1 and a2 >= b2
 end
 
 range_pairs
