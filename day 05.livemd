@@ -1,0 +1,95 @@
+# Advent of Code 2022 - 5
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+[stacks, operations] =
+  Kino.Input.read(input)
+  |> String.split("\n\n", trim: true)
+```
+
+```elixir
+stacks =
+  stacks
+  |> String.split("\n")
+  |> Enum.reverse()
+  |> Enum.drop(1)
+  |> Enum.map(fn layer ->
+    layer
+    |> String.to_charlist()
+    |> Enum.chunk_every(4)
+    |> Enum.map(fn [_, a | _] -> a end)
+  end)
+  |> Enum.zip_with(& &1)
+  |> Enum.map(fn stack -> Enum.filter(stack, &(&1 != 0x20)) end)
+```
+
+```elixir
+operations =
+  operations
+  |> String.split("\n", trim: true)
+  |> Enum.map(fn op ->
+    op
+    |> String.split(["move ", " from ", " to "], trim: true)
+    |> Enum.map(&String.to_integer/1)
+  end)
+```
+
+```elixir
+defmodule Stacks do
+  # This is most likely very inefficient, I'm aware
+  def move(stacks, count, from, to) do
+    from_index = from - 1
+    from = Enum.at(stacks, from_index)
+    from_count = Enum.count(from)
+    to_index = to - 1
+    to = Enum.at(stacks, to_index)
+
+    new_from = Enum.take(from, from_count - count)
+    moved = Enum.drop(from, from_count - count)
+    new_to = to ++ moved
+
+    stacks
+    |> List.replace_at(from_index, new_from)
+    |> List.replace_at(to_index, new_to)
+  end
+
+  def apply_operation(stacks, [1, from, to]) do
+    move(stacks, 1, from, to)
+  end
+
+  def apply_operation(stacks, [count, from, to]) do
+    stacks
+    |> move(1, from, to)
+    |> apply_operation([count - 1, from, to])
+  end
+end
+```
+
+## Part 1
+
+```elixir
+operations
+|> Enum.reduce(stacks, fn op, stacks ->
+  Stacks.apply_operation(stacks, op)
+end)
+|> Enum.map(&List.last/1)
+```
+
+## Part 2
+
+```elixir
+operations
+|> Enum.reduce(stacks, fn [count, from, to], stacks ->
+  Stacks.move(stacks, count, from, to)
+end)
+|> Enum.map(&List.last/1)
+```
