@@ -1,0 +1,54 @@
+# Advent of Code 2022 - 6
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+buffer =
+  Kino.Input.read(input)
+  |> String.to_charlist()
+```
+
+```elixir
+defmodule Packets do
+  def find_marker(buffer, marker_size) do
+    buffer
+    |> Stream.chunk_every(marker_size, 1, :discard)
+    |> Stream.with_index()
+    |> Enum.find(fn {chunk, _} ->
+      chunk
+      |> Enum.uniq()
+      |> Enum.count() == marker_size
+    end)
+  end
+
+  def find_packet(buffer) do
+    {_, index} = find_marker(buffer, 4)
+    index + 4
+  end
+
+  def find_message(buffer) do
+    {_, index} = find_marker(buffer, 14)
+    index + 14
+  end
+end
+```
+
+## Part 1
+
+```elixir
+Packets.find_packet(buffer)
+```
+
+## Part 2
+
+```elixir
+Packets.find_message(buffer)
+```
