@@ -1,0 +1,131 @@
+# Advent of Code 2022 - 7
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+input =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(fn line ->
+    case line do
+      "$ " <> command ->
+        {:command, String.split(command, " ")}
+
+      "dir " <> directory ->
+        {:directory, directory}
+
+      _ ->
+        [size, file] = String.split(line, " ", parts: 2)
+        {:file, file, String.to_integer(size)}
+    end
+  end)
+```
+
+```elixir
+defmodule Filesystem do
+  def new_directory(parent \\ nil),
+    do: %{
+      files: %{},
+      subdirectories: MapSet.new(),
+      parent: parent
+    }
+
+  def new_builder(),
+    do: %{
+      pwd: [],
+      filesystem: %{
+        "/" => new_directory()
+      }
+    }
+
+  defp directory_path(pwd), do: "/" <> (pwd |> Enum.reverse() |> Enum.join("/"))
+
+  def builder_eval(%{pwd: pwd} = builder, {:command, ["cd", path]}) do
+    case path do
+      "/" -> %{builder | pwd: []}
+      ".." -> %{builder | pwd: Enum.drop(pwd, 1)}
+      directory -> %{builder | pwd: [directory] ++ pwd}
+    end
+  end
+
+  def builder_eval(builder, {:command, ["ls"]}), do: builder
+
+  def builder_eval(%{pwd: pwd, filesystem: filesystem} = builder, {:directory, directory}) do
+    parent_path = directory_path(pwd)
+    path = directory_path([directory] ++ pwd)
+
+    filesystem =
+      filesystem
+      |> Map.put(path, new_directory(parent_path))
+      |> update_in([parent_path, :subdirectories], &MapSet.put(&1, path))
+
+    %{builder | filesystem: filesystem}
+  end
+
+  def builder_eval(%{pwd: pwd, filesystem: filesystem} = builder, {:file, file, size}) do
+    path = directory_path(pwd)
+    filesystem = put_in(filesystem, [path, :files, file], size)
+    %{builder | filesystem: filesystem}
+  end
+
+  def size(%{files: files}) do
+    files
+    |> Enum.map(fn {_, size} -> size end)
+    |> Enum.sum()
+  end
+
+  def total_size(%{subdirectories: subdirectories} = directory, filesystem) do
+    size = size(directory)
+
+    subdirectory_size =
+      subdirectories
+      |> Enum.map(fn path -> Map.get(filesystem, path) end)
+      |> Enum.map(fn dir -> total_size(dir, filesystem) end)
+      |> Enum.sum()
+
+    size + subdirectory_size
+  end
+end
+```
+
+```elixir
+filesystem =
+  input
+  |> Enum.reduce(Filesystem.new_builder(), fn command, state ->
+    Filesystem.builder_eval(state, command)
+  end)
+  |> Map.get(:filesystem)
+```
+
+## Part 1
+
+```elixir
+filesystem
+|> Enum.map(fn {_, directory} -> Filesystem.total_size(directory, filesystem) end)
+|> Enum.filter(&(&1 <= 100_000))
+|> Enum.sum()
+```
+
+## Part 2
+
+```elixir
+root_size =
+  filesystem
+  |> Map.get("/")
+  |> Filesystem.total_size(filesystem)
+
+missing_space = 30_000_000 - (70_000_000 - root_size)
+
+filesystem
+|> Enum.map(fn {_, directory} -> Filesystem.total_size(directory, filesystem) end)
+|> Enum.filter(&(&1 >= missing_space))
+|> Enum.min()
+```
