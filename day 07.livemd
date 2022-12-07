@@ -38,43 +38,10 @@ defmodule Filesystem do
       parent: parent
     }
 
-  def new_builder(),
+  def new(),
     do: %{
-      pwd: [],
-      filesystem: %{
-        "/" => new_directory()
-      }
+      "/" => new_directory()
     }
-
-  defp directory_path(pwd), do: "/" <> (pwd |> Enum.reverse() |> Enum.join("/"))
-
-  def builder_eval(%{pwd: pwd} = builder, {:command, ["cd", path]}) do
-    case path do
-      "/" -> %{builder | pwd: []}
-      ".." -> %{builder | pwd: Enum.drop(pwd, 1)}
-      directory -> %{builder | pwd: [directory] ++ pwd}
-    end
-  end
-
-  def builder_eval(builder, {:command, ["ls"]}), do: builder
-
-  def builder_eval(%{pwd: pwd, filesystem: filesystem} = builder, {:directory, directory}) do
-    parent_path = directory_path(pwd)
-    path = directory_path([directory] ++ pwd)
-
-    filesystem =
-      filesystem
-      |> Map.put(path, new_directory(parent_path))
-      |> update_in([parent_path, :subdirectories], &MapSet.put(&1, path))
-
-    %{builder | filesystem: filesystem}
-  end
-
-  def builder_eval(%{pwd: pwd, filesystem: filesystem} = builder, {:file, file, size}) do
-    path = directory_path(pwd)
-    filesystem = put_in(filesystem, [path, :files, file], size)
-    %{builder | filesystem: filesystem}
-  end
 
   def size(%{files: files}) do
     files
@@ -97,10 +64,50 @@ end
 ```
 
 ```elixir
+defmodule Filesystem.Builder do
+  def new(),
+    do: %{
+      pwd: [],
+      filesystem: Filesystem.new()
+    }
+
+  defp directory_path(pwd), do: "/" <> (pwd |> Enum.reverse() |> Enum.join("/"))
+
+  def eval(%{pwd: pwd} = builder, {:command, ["cd", path]}) do
+    case path do
+      "/" -> %{builder | pwd: []}
+      ".." -> %{builder | pwd: Enum.drop(pwd, 1)}
+      directory -> %{builder | pwd: [directory] ++ pwd}
+    end
+  end
+
+  def eval(%{pwd: pwd, filesystem: filesystem} = builder, {:directory, directory}) do
+    parent_path = directory_path(pwd)
+    path = directory_path([directory] ++ pwd)
+
+    filesystem =
+      filesystem
+      |> Map.put(path, Filesystem.new_directory(parent_path))
+      |> update_in([parent_path, :subdirectories], &MapSet.put(&1, path))
+
+    %{builder | filesystem: filesystem}
+  end
+
+  def eval(%{pwd: pwd, filesystem: filesystem} = builder, {:file, file, size}) do
+    path = directory_path(pwd)
+    filesystem = put_in(filesystem, [path, :files, file], size)
+    %{builder | filesystem: filesystem}
+  end
+
+  def eval(builder, _), do: builder
+end
+```
+
+```elixir
 filesystem =
   input
-  |> Enum.reduce(Filesystem.new_builder(), fn command, state ->
-    Filesystem.builder_eval(state, command)
+  |> Enum.reduce(Filesystem.Builder.new(), fn command, state ->
+    Filesystem.Builder.eval(state, command)
   end)
   |> Map.get(:filesystem)
 ```
