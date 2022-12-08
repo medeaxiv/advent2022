@@ -1,0 +1,143 @@
+# Advent of Code 2022 - 8
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+forest =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(fn line ->
+    line
+    |> String.to_charlist()
+    |> Enum.map(&(&1 - ?0))
+  end)
+```
+
+```elixir
+defmodule Forest do
+  def get_tree(forest, x, y) do
+    forest
+    |> Enum.at(y)
+    |> Enum.at(x)
+  end
+
+  defp get_vertical_surroundings(forest, x, y) do
+    {up, down} =
+      forest
+      |> Stream.map(fn row -> Enum.at(row, x) end)
+      |> Enum.split(y)
+
+    [
+      Enum.reverse(up),
+      Enum.drop(down, 1)
+    ]
+  end
+
+  defp get_horizontal_surroundings(forest, x, y) do
+    {left, right} =
+      forest
+      |> Enum.at(y)
+      |> Enum.split(x)
+
+    [
+      Enum.reverse(left),
+      Enum.drop(right, 1)
+    ]
+  end
+
+  defp get_surrounding_directions(forest, x, y) do
+    get_vertical_surroundings(forest, x, y) ++
+      get_horizontal_surroundings(forest, x, y)
+  end
+
+  defp directional_visibility([], _), do: true
+  defp directional_visibility(direction, height), do: Enum.all?(direction, &(&1 < height))
+
+  defp visible?(forest, tree, x, y) do
+    forest
+    |> get_surrounding_directions(x, y)
+    |> Stream.map(fn direction -> directional_visibility(direction, tree) end)
+    |> Enum.any?()
+  end
+
+  def visible?(forest, x, y) do
+    tree = get_tree(forest, x, y)
+    visible?(forest, tree, x, y)
+  end
+
+  def visibility_map(forest) do
+    forest
+    |> Stream.with_index()
+    |> Stream.map(fn {row, y} ->
+      row
+      |> Stream.with_index()
+      |> Stream.map(fn {tree, x} -> visible?(forest, tree, x, y) end)
+      |> Enum.to_list()
+    end)
+    |> Enum.to_list()
+  end
+
+  defp directional_score([], _), do: 0
+
+  defp directional_score(direction, height),
+    do:
+      Enum.reduce_while(direction, {0, true}, fn tree, {distance, continue} ->
+        case continue do
+          true -> {:cont, {distance + 1, tree < height}}
+          false -> {:halt, {distance, false}}
+        end
+      end)
+      |> elem(0)
+
+  defp scenic_score(forest, tree, x, y) do
+    forest
+    |> get_surrounding_directions(x, y)
+    |> Stream.map(fn direction -> directional_score(direction, tree) end)
+    |> Enum.product()
+  end
+
+  def scenic_score(forest, x, y) do
+    tree = get_tree(forest, x, y)
+    scenic_score(forest, tree, x, y)
+  end
+
+  def scenic_map(forest) do
+    forest
+    |> Stream.with_index()
+    |> Stream.map(fn {row, y} ->
+      row
+      |> Stream.with_index()
+      |> Stream.map(fn {tree, x} -> scenic_score(forest, tree, x, y) end)
+      |> Enum.to_list()
+    end)
+    |> Enum.to_list()
+  end
+end
+```
+
+## Part 1
+
+```elixir
+forest
+|> Forest.visibility_map()
+|> Stream.flat_map(& &1)
+|> Stream.filter(& &1)
+|> Enum.count()
+```
+
+## Part 2
+
+```elixir
+forest
+|> Forest.scenic_map()
+|> Enum.flat_map(& &1)
+|> Enum.max()
+```
