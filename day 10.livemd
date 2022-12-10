@@ -1,0 +1,93 @@
+# Advent of Code 2022 - 10
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+defmodule CPU do
+  def opcode("noop"), do: {:noop}
+  def opcode("addx " <> n), do: {:addx, String.to_integer(n)}
+
+  def eval({cycle, x}, {:noop}), do: {cycle + 1, x}
+  def eval({cycle, x}, {:addx, n}), do: {cycle + 2, x + n}
+end
+```
+
+```elixir
+defmodule CRT do
+  defp pixel(cycle, x) do
+    if rem(cycle, 40) in (x - 1)..(x + 1) do
+      ?#
+    else
+      ?.
+    end
+  end
+
+  def draw(buffer, {cycle, x}, until) do
+    pixels =
+      Stream.iterate(cycle, &(&1 + 1))
+      |> Stream.take(max(until - cycle, 0))
+      |> Stream.map(fn cycle -> pixel(cycle, x) end)
+      |> Enum.reverse()
+
+    pixels ++ buffer
+  end
+end
+```
+
+```elixir
+program =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Enum.map(&CPU.opcode/1)
+```
+
+## Part 1
+
+```elixir
+program
+|> Stream.chunk_while(
+  {{0, 1}, 20},
+  fn opcode, {{_, x} = state, target} ->
+    next_state = CPU.eval(state, opcode)
+    {next_cycle, _} = next_state
+
+    if next_cycle >= target do
+      {:cont, {target, x}, {next_state, target + 40}}
+    else
+      {:cont, {next_state, target}}
+    end
+  end,
+  fn {state, target} -> {:cont, state, {state, target}} end
+)
+|> Stream.take_while(fn {cycle, _} -> cycle <= 220 end)
+|> Stream.map(fn {cycle, x} -> cycle * x end)
+|> Enum.sum()
+```
+
+## Part 2
+
+```elixir
+program
+|> Stream.transform(
+  fn -> {0, 1} end,
+  fn opcode, state -> {[state], CPU.eval(state, opcode)} end,
+  fn state -> {[state], state} end,
+  & &1
+)
+|> Enum.to_list()
+|> Enum.chunk_every(2, 1, :discard)
+|> Enum.reduce([], fn [state, {until, _}], buffer -> CRT.draw(buffer, state, until) end)
+|> Enum.reverse()
+|> Enum.chunk_every(40)
+|> Enum.map(&List.to_string/1)
+|> Enum.join("\n")
+|> IO.puts()
+```
