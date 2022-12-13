@@ -1,0 +1,134 @@
+# Advent of Code 2022 - 13
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.7.0"},
+  {:nimble_parsec, "~> 1.2.3"}
+])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+defmodule Parser do
+  import NimbleParsec
+
+  defcombinatorp(
+    :element,
+    empty()
+    |> choice([
+      integer(min: 1),
+      parsec(:list)
+      |> reduce({List, :wrap, []})
+    ])
+  )
+
+  defcombinatorp(
+    :body,
+    parsec(:element)
+    |> optional(
+      ignore(string(","))
+      |> parsec(:body)
+    )
+  )
+
+  defcombinatorp(
+    :list,
+    ignore(string("["))
+    |> optional(parsec(:body))
+    |> ignore(string("]"))
+  )
+
+  defparsecp(
+    :parse_packet,
+    parsec(:list)
+  )
+
+  def packet(spec) do
+    {:ok, list, _, _, _, _} = parse_packet(spec)
+    list
+  end
+end
+```
+
+```elixir
+pairs =
+  Kino.Input.read(input)
+  |> String.split("\n\n")
+  |> Enum.map(fn chunk ->
+    chunk
+    |> String.split("\n", trim: true)
+    |> Enum.map(&Parser.packet/1)
+  end)
+```
+
+```elixir
+defmodule Packets do
+  defp null_terminate(enumerable) do
+    Stream.concat(enumerable, [nil])
+  end
+
+  def compare(left, right) when is_integer(left) and is_integer(right) do
+    cond do
+      left == right -> :equal
+      left > right -> :unordered
+      true -> :ordered
+    end
+  end
+
+  def compare(left, right) when is_list(left) and is_list(right) do
+    null_terminate(left)
+    |> Stream.zip(null_terminate(right))
+    |> Enum.reduce_while(:ordered, fn {l, r}, _ ->
+      case compare(l, r) do
+        :equal -> {:cont, :equal}
+        :ordered -> {:halt, :ordered}
+        :unordered -> {:halt, :unordered}
+      end
+    end)
+  end
+
+  def compare(nil, nil), do: :equal
+  def compare(_, nil), do: :unordered
+  def compare(nil, _), do: :ordered
+
+  def compare(left, right) do
+    compare(List.wrap(left), List.wrap(right))
+  end
+end
+```
+
+## Part 1
+
+```elixir
+pairs
+|> Stream.with_index(1)
+|> Stream.map(fn {[left, right], idx} ->
+  {idx, Packets.compare(left, right)}
+end)
+|> Stream.filter(fn {_, r} -> r == :ordered end)
+|> Stream.map(&elem(&1, 0))
+|> Enum.sum()
+```
+
+## Part 2
+
+```elixir
+divider_packets =
+  [[[2]], [[6]]]
+  |> Stream.map(&{&1, -1})
+
+pairs
+|> Stream.flat_map(& &1)
+|> Stream.map(&{&1, 1})
+|> Stream.concat(divider_packets)
+|> Enum.sort(fn {a, _}, {b, _} -> Packets.compare(a, b) == :ordered end)
+|> Stream.with_index(1)
+|> Stream.filter(fn {{_, marker}, _} -> marker < 0 end)
+|> Stream.map(&elem(&1, 1))
+|> Enum.product()
+```
