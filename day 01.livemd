@@ -10,19 +10,21 @@ Mix.install([{:kino, "~> 0.7.0"}])
 input = Kino.Input.textarea("Input")
 ```
 
-## Part 1
-
 ```elixir
 calories =
   Kino.Input.read(input)
   |> String.split("\n\n")
   |> Enum.map(fn group ->
     group
-    |> String.split("\n")
+    |> String.split("\n", trim: true)
     |> Enum.map(&String.to_integer/1)
     |> Enum.sum()
   end)
+```
 
+## Part 1
+
+```elixir
 Enum.max(calories)
 ```
 
