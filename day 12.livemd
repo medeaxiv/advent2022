@@ -3,8 +3,10 @@
 ```elixir
 Mix.install([
   {:kino, "~> 0.7.0"},
-  {:libgraph, "~> 0.16.0"}
+  {:kino_vega_lite, "~> 0.1.7"}
 ])
+
+alias VegaLite, as: Vl
 ```
 
 ## Input
@@ -18,115 +20,138 @@ grid =
   Kino.Input.read(input)
   |> String.split("\n", trim: true)
   |> Stream.with_index()
-  |> Enum.flat_map(fn {line, y} ->
+  |> Enum.map(fn {line, y} ->
     line
     |> String.to_charlist()
     |> Stream.with_index()
     |> Enum.map(fn {char, x} ->
       case char do
-        ?S -> {{x, y}, 0, :start}
-        ?E -> {{x, y}, 25, :end}
-        _ -> {{x, y}, char - ?a, nil}
+        ?S -> {{x, y}, -1}
+        ?E -> {{x, y}, 26}
+        _ -> {{x, y}, char - ?a}
       end
     end)
   end)
+
+height = Enum.count(grid)
+width = Enum.count(List.first(grid))
+
+grid = Enum.flat_map(grid, & &1)
 ```
 
 ```elixir
 [start, destination] =
   grid
-  |> Enum.min_max_by(fn {_, _, type} ->
-    case type do
-      :start -> -1
-      :end -> 1
-      _ -> 0
-    end
-  end)
+  |> Enum.min_max_by(&elem(&1, 1))
   |> Tuple.to_list()
   |> Enum.map(&elem(&1, 0))
 ```
 
 ```elixir
-vertices =
+nodes =
   grid
-  |> Stream.map(fn {pos, height, _} -> {pos, height} end)
+  |> Stream.map(fn {pos, height} -> {pos, max(0, min(height, 25))} end)
   |> Map.new()
 ```
 
 ```elixir
-defmodule Pathfinding do
-  defp manhattan({x2, y2}) do
-    fn {x1, y1} -> abs(x2 - x1) + abs(y2 - y1) end
+defmodule HikeMap do
+  defp neighbors({x, y} = pos),
+    do: [
+      {pos, {x - 1, y}},
+      {pos, {x + 1, y}},
+      {pos, {x, y - 1}},
+      {pos, {x, y + 1}}
+    ]
+
+  defp advance(nodes, closed, front, distance) do
+    new_front =
+      front
+      |> Stream.flat_map(&neighbors/1)
+      |> Stream.filter(fn {prev, next} ->
+        prev_height = Map.get(nodes, prev)
+        next_height = Map.get(nodes, next)
+
+        prev_height != nil &&
+          next_height != nil &&
+          !Map.has_key?(closed, next) &&
+          next_height - prev_height >= -1
+      end)
+      |> Stream.map(&elem(&1, 1))
+      |> Enum.uniq()
+
+    new_closed =
+      closed
+      |> Map.merge(
+        new_front
+        |> Stream.map(&{&1, distance + 1})
+        |> Map.new()
+      )
+
+    {new_closed, new_front}
   end
 
-  def new_graph(edges),
-    do:
-      Graph.new(type: :directed)
-      |> Graph.add_edges(edges)
+  def flood_distance_from(nodes, from) do
+    closed = Map.new([{from, 0}])
+    front = [from]
 
-  def shortest_distance(graph, start, destination) do
-    path =
-      graph
-      |> Graph.a_star(start, destination, manhattan(destination))
+    Stream.iterate(0, &(&1 + 1))
+    |> Enum.reduce_while({closed, front}, fn distance, {closed, front} ->
+      {closed, front} = advance(nodes, closed, front, distance)
 
-    case path do
-      nil ->
-        nil
-
-      _ ->
-        path
-        |> Stream.drop(1)
-        |> Enum.count()
-    end
+      case front do
+        [] -> {:halt, closed}
+        _ -> {:cont, {closed, front}}
+      end
+    end)
   end
 end
 ```
 
 ```elixir
-node_edges = fn {{x, y} = from, height} ->
-  edges_to = fn to ->
-    case Map.get(vertices, to) do
-      nil ->
-        []
+distance_map = HikeMap.flood_distance_from(nodes, destination)
+```
 
-      z ->
-        [
-          {{from, to}, max(z - height, 1)},
-          {{to, from}, max(height - z, 1)}
-        ]
-    end
-  end
-
-  edges_to.({x + 1, y}) ++ edges_to.({x, y + 1})
-end
-
-graph =
-  vertices
-  |> Stream.flat_map(node_edges)
-  |> Stream.filter(fn {_, delta} -> delta == 1 end)
-  |> Stream.map(&elem(&1, 0))
-  |> Pathfinding.new_graph()
+```elixir
+Vl.new(width: width * 10, height: height * 10)
+|> Vl.data_from_values(
+  nodes
+  |> Enum.map(fn {{x, y} = pos, height} ->
+    distance = Map.get(distance_map, pos, 0)
+    %{x: x, y: y, height: height, distance: distance, closed: distance != nil}
+  end)
+)
+|> Vl.layers([
+  Vl.new()
+  |> Vl.mark(:rect, tooltip: %{content: :data})
+  |> Vl.encode_field(:x, "x", maxbins: width, type: :ordinal)
+  |> Vl.encode_field(:y, "y", maxbins: height, type: :ordinal)
+  |> Vl.encode_field(:color, "height", type: :quantitative, scale: %{scheme: "blues"}),
+  Vl.new()
+  |> Vl.mark(:circle, tooltip: %{content: :data})
+  |> Vl.encode_field(:x, "x", maxbins: width, type: :ordinal)
+  |> Vl.encode_field(:y, "y", maxbins: height, type: :ordinal)
+  |> Vl.encode_field(:fill, "distance", type: :quantitative, scale: %{scheme: "viridis"})
+])
 ```
 
 ## Part 1
 
 ```elixir
-Pathfinding.shortest_distance(graph, start, destination)
+Map.get(distance_map, start)
 ```
 
 ## Part 2
 
 ```elixir
 start_candidates =
-  vertices
+  nodes
   |> Stream.filter(fn {_, height} -> height == 0 end)
   |> Enum.map(&elem(&1, 0))
 ```
 
-This is very slow
-
 ```elixir
 start_candidates
-|> Stream.map(fn start -> Pathfinding.shortest_distance(graph, start, destination) end)
+|> Stream.map(fn start -> Map.get(distance_map, start) end)
 |> Enum.min()
 ```
