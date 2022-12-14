@@ -1,0 +1,141 @@
+# Advent of Code 2022 - 14
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.7.0"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+rocks =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Stream.flat_map(fn line ->
+    line
+    |> String.split([",", " -> "])
+    |> Stream.map(&String.to_integer/1)
+    |> Stream.chunk_every(2)
+    |> Stream.chunk_every(2, 1, :discard)
+    |> Stream.flat_map(fn
+      [[x, y1], [x, y2]] -> y1..y2 |> Stream.map(&{x, &1})
+      [[x1, y], [x2, y]] -> x1..x2 |> Stream.map(&{&1, y})
+    end)
+  end)
+  |> MapSet.new()
+```
+
+```elixir
+sand_spawn_position = {500, 0}
+{min_x, max_x} = Stream.map(rocks, &elem(&1, 0)) |> Enum.min_max()
+{min_y, max_y} = Stream.map(rocks, &elem(&1, 1)) |> Enum.min_max()
+```
+
+```elixir
+defmodule Sand do
+  defp free?(rocks, sand, pos),
+    do: !(MapSet.member?(rocks, pos) || MapSet.member?(sand, pos))
+
+  defp step_sand(rocks, sand, limit, {x, y} = from, limit_fn) do
+    cond do
+      y + 1 >= limit -> limit_fn.(from)
+      free?(rocks, sand, {x, y + 1}) -> {:cont, {x, y + 1}}
+      free?(rocks, sand, {x - 1, y + 1}) -> {:cont, {x - 1, y + 1}}
+      free?(rocks, sand, {x + 1, y + 1}) -> {:cont, {x + 1, y + 1}}
+      true -> {:halt, from}
+    end
+  end
+
+  defp drop_sand(rocks, sand, limit, from, limit_fn) do
+    Stream.iterate(nil, & &1)
+    |> Enum.reduce_while(from, fn _, pos ->
+      step_sand(rocks, sand, limit, pos, limit_fn)
+    end)
+  end
+
+  def drop(rocks, sand, limit, from, :void) do
+    drop_sand(rocks, sand, limit, from, fn _ -> {:halt, :void} end)
+  end
+
+  def drop(rocks, sand, limit, from, :floor) do
+    drop_sand(rocks, sand, limit, from, fn pos -> {:halt, pos} end)
+  end
+
+  def chart(rocks, sand) do
+    alias VegaLite, as: Vl
+
+    data =
+      rocks
+      |> Enum.map(fn {x, y} -> %{x: x, y: y, type: :rock} end)
+      |> Enum.concat(
+        sand
+        |> Enum.map(fn {x, y} -> %{x: x, y: y, type: :sand} end)
+      )
+
+    Vl.new()
+    |> Vl.config(
+      projection: [
+        type: :identity,
+        reflectY: true
+      ],
+      view: [step: 4],
+      axis: [
+        ticks: false,
+        labels: false
+      ]
+    )
+    |> Vl.data_from_values(data)
+    |> Vl.mark(:rect)
+    |> Vl.encode_field(:x, "x", type: :ordinal)
+    |> Vl.encode_field(:y, "y", type: :ordinal)
+    |> Vl.encode_field(:color, "type", type: :nominal)
+  end
+end
+```
+
+## Part 1
+
+```elixir
+{sand, count} =
+  Stream.iterate(nil, & &1)
+  |> Enum.reduce_while({MapSet.new(), 0}, fn _, {sand, count} ->
+    case Sand.drop(rocks, sand, max_y + 1, sand_spawn_position, :void) do
+      :void -> {:halt, {sand, count}}
+      pos -> {:cont, {MapSet.put(sand, pos), count + 1}}
+    end
+  end)
+
+count
+```
+
+```elixir
+Sand.chart(rocks, sand)
+```
+
+## Part 2
+
+```elixir
+{sand, count} =
+  Stream.iterate(nil, & &1)
+  |> Enum.reduce_while({MapSet.new(), 0}, fn _, {sand, count} ->
+    pos = Sand.drop(rocks, sand, max_y + 2, sand_spawn_position, :floor)
+    state = {MapSet.put(sand, pos), count + 1}
+
+    case pos do
+      ^sand_spawn_position -> {:halt, state}
+      _ -> {:cont, state}
+    end
+  end)
+
+count
+```
+
+```elixir
+Sand.chart(rocks, sand)
+```
