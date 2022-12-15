@@ -1,0 +1,147 @@
+# Advent of Code 2022 - 15
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.7.0"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+sensors =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Stream.map(fn line ->
+    ~r/x=(-?[\d]+), y=(-?[\d]+)/
+    |> Regex.scan(line, capture: :all_but_first)
+    |> Stream.flat_map(& &1)
+    |> Stream.map(&String.to_integer/1)
+    |> Stream.chunk_every(2)
+    |> Stream.map(fn [x, y] -> {x, y} end)
+    |> Enum.to_list()
+    |> List.to_tuple()
+  end)
+  |> Map.new()
+
+beacons =
+  sensors
+  |> Map.values()
+  |> MapSet.new()
+```
+
+```elixir
+defmodule RangeList do
+  defp combine(a1..a2, b1..b2) do
+    bounds = [a1, a2, b1, b2]
+    low_bound = Enum.min(bounds)
+    high_bound = Enum.max(bounds)
+    low_bound..high_bound
+  end
+
+  defp grow(a..b), do: (a - 1)..(b + 1)
+
+  def add(list, range) do
+    {filtered, range} =
+      list
+      |> Enum.reduce({[], range}, fn enum_r, {filtered, acc_r} ->
+        cond do
+          Range.disjoint?(enum_r, grow(range)) -> {[enum_r | filtered], acc_r}
+          true -> {filtered, combine(enum_r, acc_r)}
+        end
+      end)
+
+    [range | filtered]
+  end
+
+  def size(list), do: Stream.map(list, &Range.size/1) |> Enum.sum()
+
+  def member?(list, item), do: Enum.any?(list, &Enum.member?(&1, item))
+end
+```
+
+```elixir
+defmodule Sensors do
+  def manhattan({x1, y1}, {x2, y2}), do: abs(x2 - x1) + abs(y2 - y1)
+
+  def sensor_coverage({x, y}, edge_distance, target_y) do
+    delta_y = abs(y - target_y)
+
+    cond do
+      delta_y > edge_distance ->
+        :empty
+
+      delta_y == edge_distance ->
+        x..x
+
+      true ->
+        delta_x = edge_distance - delta_y
+
+        (x - delta_x)..(x + delta_x)
+    end
+  end
+
+  def network_coverage(sensors, target_y) do
+    sensors
+    |> Stream.map(fn {sensor, beacon} ->
+      {sensor, Sensors.manhattan(sensor, beacon)}
+    end)
+    |> Stream.map(fn {sensor, edge_distance} ->
+      Sensors.sensor_coverage(sensor, edge_distance, target_y)
+    end)
+    |> Stream.filter(&(&1 != :empty))
+    |> Enum.reduce([], &RangeList.add(&2, &1))
+    |> Enum.sort_by(fn a.._ -> a end)
+  end
+
+  def tuning_frequency({x, y}), do: x * 4_000_000 + y
+end
+```
+
+## Part 1
+
+```elixir
+target_y = 2_000_000
+```
+
+```elixir
+coverage = Sensors.network_coverage(sensors, target_y)
+```
+
+```elixir
+covered_beacons =
+  beacons
+  |> Enum.filter(fn {x, y} -> y == target_y && RangeList.member?(coverage, x) end)
+```
+
+```elixir
+RangeList.size(coverage) - Enum.count(covered_beacons)
+```
+
+## Part 2
+
+```elixir
+bounds = 0..4_000_000
+```
+
+***VERY*** slow
+
+```elixir
+[beacon] =
+  bounds
+  |> Stream.map(fn y -> {y, Sensors.network_coverage(sensors, y)} end)
+  |> Stream.filter(fn
+    {_, [_..a, b.._]} -> b - a == 2
+    _ -> false
+  end)
+  |> Stream.map(fn {y, [_..x, _.._]} -> {x + 1, y} end)
+  |> Stream.filter(fn {x, _} -> x in bounds end)
+  |> Enum.take(1)
+
+Sensors.tuning_frequency(beacon)
+```
