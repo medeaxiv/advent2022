@@ -40,7 +40,7 @@ sand_spawn_position = {500, 0}
 ```elixir
 defmodule Sand do
   defp free?(rocks, sand, pos),
-    do: !(MapSet.member?(rocks, pos) || MapSet.member?(sand, pos))
+    do: !(MapSet.member?(rocks, pos) || Map.has_key?(sand, pos))
 
   defp step_sand(rocks, sand, limit, {x, y} = from, limit_fn) do
     cond do
@@ -70,14 +70,6 @@ defmodule Sand do
   def chart(rocks, sand) do
     alias VegaLite, as: Vl
 
-    data =
-      rocks
-      |> Enum.map(fn {x, y} -> %{x: x, y: y, type: :rock} end)
-      |> Enum.concat(
-        sand
-        |> Enum.map(fn {x, y} -> %{x: x, y: y, type: :sand} end)
-      )
-
     Vl.new()
     |> Vl.config(
       projection: [
@@ -90,11 +82,23 @@ defmodule Sand do
         labels: false
       ]
     )
-    |> Vl.data_from_values(data)
-    |> Vl.mark(:rect)
-    |> Vl.encode_field(:x, "x", type: :ordinal)
-    |> Vl.encode_field(:y, "y", type: :ordinal)
-    |> Vl.encode_field(:color, "type", type: :nominal)
+    |> Vl.datasets_from_values(
+      rocks: Enum.map(rocks, fn {x, y} -> %{x: x, y: y} end),
+      sand: Enum.map(sand, fn {{x, y}, index} -> %{x: x, y: y, index: index} end)
+    )
+    |> Vl.layers([
+      Vl.new()
+      |> Vl.data(name: :rocks)
+      |> Vl.mark(:rect)
+      |> Vl.encode_field(:x, "x", type: :ordinal)
+      |> Vl.encode_field(:y, "y", type: :ordinal),
+      Vl.new()
+      |> Vl.data(name: :sand)
+      |> Vl.mark(:rect)
+      |> Vl.encode_field(:x, "x", type: :ordinal)
+      |> Vl.encode_field(:y, "y", type: :ordinal)
+      |> Vl.encode_field(:color, "index", type: :quantitative)
+    ])
   end
 end
 ```
@@ -104,10 +108,10 @@ end
 ```elixir
 {sand, count} =
   Stream.iterate(nil, & &1)
-  |> Enum.reduce_while({MapSet.new(), 0}, fn _, {sand, count} ->
+  |> Enum.reduce_while({Map.new(), 0}, fn _, {sand, count} ->
     case Sand.drop(rocks, sand, max_y + 1, sand_spawn_position, :void) do
       :void -> {:halt, {sand, count}}
-      pos -> {:cont, {MapSet.put(sand, pos), count + 1}}
+      pos -> {:cont, {Map.put(sand, pos, count), count + 1}}
     end
   end)
 
@@ -123,9 +127,9 @@ Sand.chart(rocks, sand)
 ```elixir
 {sand, count} =
   Stream.iterate(nil, & &1)
-  |> Enum.reduce_while({MapSet.new(), 0}, fn _, {sand, count} ->
+  |> Enum.reduce_while({Map.new(), 0}, fn _, {sand, count} ->
     pos = Sand.drop(rocks, sand, max_y + 2, sand_spawn_position, :floor)
-    state = {MapSet.put(sand, pos), count + 1}
+    state = {Map.put(sand, pos, count), count + 1}
 
     case pos do
       ^sand_spawn_position -> {:halt, state}
