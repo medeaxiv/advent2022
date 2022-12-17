@@ -1,0 +1,214 @@
+# Advent of Code 2022 - 16
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+defmodule Tunnels do
+  defstruct [:valves, :tunnels]
+
+  defp valve_from_input(input) do
+    ~r/^Valve (.{2}) has flow rate=(.+); tunnels? leads? to valves? (.+)$/
+    |> Regex.scan(input, capture: :all_but_first)
+    |> Enum.map(fn [valve, flow, tunnels] ->
+      {valve, %{flow_rate: String.to_integer(flow), tunnels: String.split(tunnels, ", ")}}
+    end)
+    |> List.first()
+  end
+
+  defp filter_valves(valves) do
+    valves
+    |> Stream.map(fn {valve, %{flow_rate: flow_rate}} -> {valve, flow_rate} end)
+    |> Stream.filter(&(elem(&1, 1) > 0))
+    |> Map.new()
+  end
+
+  defp tunnels(valves, start, nodes) do
+    floyd_warshall(valves)
+    |> Stream.filter(fn {{a, b}, _} ->
+      a != b &&
+        (a == start || MapSet.member?(nodes, a)) &&
+        MapSet.member?(nodes, b)
+    end)
+    |> Map.new()
+  end
+
+  def from_input(input) do
+    valves =
+      Kino.Input.read(input)
+      |> String.split("\n", trim: true)
+      |> Stream.map(&valve_from_input(&1))
+      |> Map.new()
+
+    working_valves = filter_valves(valves)
+
+    %__MODULE__{
+      valves: working_valves,
+      tunnels: tunnels(valves, "AA", Map.keys(working_valves) |> MapSet.new())
+    }
+  end
+
+  defp floyd_warshall(valves) do
+    add = fn
+      _, :inf -> :inf
+      :inf, _ -> :inf
+      a, b -> a + b
+    end
+
+    compare = fn
+      _, :inf -> false
+      :inf, _ -> true
+      a, b -> a > b
+    end
+
+    nodes = Map.keys(valves)
+
+    edges =
+      valves
+      |> Stream.flat_map(fn {valve, %{tunnels: tunnels}} ->
+        tunnels
+        |> Stream.map(&{{valve, &1}, 1})
+        |> Stream.concat([{{valve, valve}, 0}])
+      end)
+      |> Map.new()
+
+    Enum.reduce(nodes, edges, fn k, acc ->
+      Enum.reduce(nodes, acc, fn i, acc ->
+        Enum.reduce(nodes, acc, fn j, acc ->
+          ij = Map.get(acc, {i, j}, :inf)
+          ik = Map.get(acc, {i, k}, :inf)
+          kj = Map.get(acc, {k, j}, :inf)
+          ikj = add.(ik, kj)
+
+          cond do
+            compare.(ij, ikj) -> Map.put(acc, {i, j}, ikj)
+            true -> acc
+          end
+        end)
+      end)
+    end)
+  end
+
+  defp valve_cost(%__MODULE__{} = tunnels, from, to, time_left),
+    do: Map.get(tunnels.tunnels, {from, to}, time_left) + 1
+
+  defp valve_value(%__MODULE__{} = tunnels, from, to, time_left) do
+    distance = Map.get(tunnels.tunnels, {from, to}, 0)
+    flow_rate = Map.get(tunnels.valves, to, 0)
+    (time_left - distance - 1) * flow_rate
+  end
+
+  defp traverse_dfs(%__MODULE__{} = tunnels, from, value, time_left, path, collect_fn) do
+    tunnels.valves
+    |> Map.keys()
+    |> Stream.filter(&(!Map.has_key?(path, &1)))
+    |> Stream.map(fn valve ->
+      cost = valve_cost(tunnels, from, valve, time_left)
+      value = valve_value(tunnels, from, valve, time_left)
+      {from, valve, cost, value}
+    end)
+    |> Stream.filter(&(elem(&1, 2) < time_left))
+    |> Stream.map(fn {_, to, cost, valve_value} ->
+      if cost < time_left do
+        traverse_dfs(
+          tunnels,
+          to,
+          valve_value + value,
+          time_left - cost,
+          Map.put(path, to, time_left - cost),
+          collect_fn
+        )
+      end
+    end)
+    |> Stream.filter(&(&1 != nil))
+    |> Stream.concat([{value, path}])
+    |> collect_fn.()
+
+    # |> Enum.max_by(&elem(&1, 0))
+  end
+
+  defp collect_max(e), do: Enum.max_by(e, &elem(&1, 0))
+
+  def traverse(%__MODULE__{} = tunnels, from, time_left, options \\ []) do
+    opened = Keyword.get(options, :opened, Map.new())
+    collect_fn = Keyword.get(options, :collect_fn, &collect_max/1)
+
+    traverse_dfs(
+      tunnels,
+      from,
+      0,
+      time_left,
+      opened,
+      collect_fn
+    )
+  end
+end
+```
+
+```elixir
+tunnels = Tunnels.from_input(input)
+```
+
+## Part 1
+
+```elixir
+p1 = Tunnels.traverse(tunnels, "AA", 30)
+elem(p1, 0)
+```
+
+## Part 2
+
+```elixir
+defmodule P2 do
+  def collect(element) when is_tuple(element) do
+    [element]
+  end
+
+  def collect(enumerable) do
+    enumerable
+    |> Stream.flat_map(&collect/1)
+  end
+end
+```
+
+```elixir
+paths =
+  Tunnels.traverse(tunnels, "AA", 26, collect_fn: &P2.collect/1)
+  |> Stream.map(fn {value, path} ->
+    visited = path |> Map.keys() |> MapSet.new()
+    {value, path, visited}
+  end)
+```
+
+```elixir
+paths
+|> Enum.sort_by(&elem(&1, 0), &>/2)
+|> Enum.reduce(
+  {paths, []},
+  fn
+    {_, _, visited} = head, {[_ | tail], pairs} ->
+      case tail
+           |> Enum.find(fn {_, _, a} -> MapSet.disjoint?(visited, a) end) do
+        nil ->
+          {tail, pairs}
+
+        best ->
+          total = elem(head, 0) + elem(best, 0)
+          {tail, [{total, head, best} | pairs]}
+      end
+
+    _, {[_], pairs} ->
+      {[], pairs}
+  end
+)
+|> elem(1)
+|> Enum.max_by(&elem(&1, 0))
+|> elem(0)
+```
