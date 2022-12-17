@@ -1,0 +1,343 @@
+# Advent of Code 2022 - 17
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.7.0"},
+  {:kino_vega_lite, "~> 0.1.7"}
+])
+```
+
+## Input
+
+```elixir
+pieces = """
+####
+
+.#.
+###
+.#.
+
+..#
+..#
+###
+
+#
+#
+#
+#
+
+##
+##
+"""
+```
+
+```elixir
+defmodule Coords do
+  def x({x, _}), do: x
+  def y({_, y}), do: y
+  def add({ax, ay}, {bx, by}), do: {ax + bx, ay + by}
+  def sub({ax, ay}, {bx, by}), do: {ax - bx, ay - by}
+end
+```
+
+```elixir
+defmodule Piece do
+  @enforce_keys [:type, :origin, :width, :coordinates]
+  defstruct [:type, :origin, :width, :coordinates]
+
+  def read(type, input) do
+    coordinates =
+      input
+      |> String.split("\n", trim: true)
+      |> Enum.reverse()
+      |> Stream.with_index()
+      |> Stream.flat_map(fn {line, y} ->
+        line
+        |> String.to_charlist()
+        |> Stream.with_index()
+        |> Stream.map(fn {char, x} ->
+          {{x, y}, char}
+        end)
+        |> Stream.filter(&(elem(&1, 1) == ?#))
+        |> Stream.map(&elem(&1, 0))
+      end)
+      |> Enum.to_list()
+
+    max_x =
+      coordinates
+      |> Stream.map(&Coords.x/1)
+      |> Enum.max()
+
+    %__MODULE__{type: type, origin: {0, 0}, width: max_x + 1, coordinates: coordinates}
+  end
+
+  def move(%__MODULE__{} = piece, {_, _} = offset) do
+    origin = Coords.add(piece.origin, offset)
+
+    coordinates =
+      piece.coordinates
+      |> Enum.map(&Coords.add(&1, offset))
+
+    %__MODULE__{piece | origin: origin, coordinates: coordinates}
+  end
+
+  def at(%__MODULE__{} = piece, {_, _} = origin) do
+    offset = Coords.sub(origin, piece.origin)
+    move(piece, offset)
+  end
+end
+```
+
+```elixir
+pieces =
+  pieces
+  |> String.split("\n\n")
+  |> Stream.with_index()
+  |> Enum.map(fn {piece, index} ->
+    Piece.read(index, piece)
+  end)
+```
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+jets = Kino.Input.read(input) |> String.trim()
+jets_length = String.length(jets)
+
+jets =
+  Stream.iterate(0, &(&1 + 1))
+  |> Stream.zip(String.to_charlist(jets))
+  |> Map.new()
+```
+
+```elixir
+defmodule Jet do
+  def offset(?>), do: {:ok, {1, 0}}
+  def offset(?<), do: {:ok, {-1, 0}}
+  def offset(_), do: {:error, :invalid}
+end
+```
+
+```elixir
+defmodule Stack do
+  @enforce_keys [:width, :max_height, :pieces, :mask]
+  defstruct [:width, :max_height, :pieces, :mask]
+
+  def new(width \\ 7),
+    do: %__MODULE__{width: width, max_height: 0, pieces: [], mask: MapSet.new()}
+
+  def out_of_bounds?(%__MODULE__{} = stack, %Piece{} = piece) do
+    x = Coords.x(piece.origin)
+    y = Coords.y(piece.origin)
+    y <= 0 || x < 0 || x + piece.width > stack.width
+  end
+
+  def collides?(%__MODULE__{} = stack, %Piece{} = piece),
+    do:
+      Enum.reduce_while(piece.coordinates, false, fn coords, _ ->
+        if MapSet.member?(stack.mask, coords) do
+          {:halt, true}
+        else
+          {:cont, false}
+        end
+      end)
+
+  def shift_piece(%__MODULE__{} = stack, %Piece{} = piece, jet) do
+    {:ok, offset} = Jet.offset(jet)
+    shifted_piece = Piece.move(piece, offset)
+
+    if out_of_bounds?(stack, shifted_piece) || collides?(stack, shifted_piece) do
+      piece
+    else
+      shifted_piece
+    end
+  end
+
+  def drop_piece(%__MODULE__{} = stack, %Piece{} = piece) do
+    dropped_piece = Piece.move(piece, {0, -1})
+
+    if out_of_bounds?(stack, dropped_piece) || collides?(stack, dropped_piece) do
+      {:resting, piece}
+    else
+      {:ok, dropped_piece}
+    end
+  end
+
+  def add_piece(%__MODULE__{} = stack, %Piece{} = piece, value \\ 0) do
+    cond do
+      out_of_bounds?(stack, piece) ->
+        {:error, :collides}
+
+      collides?(stack, piece) ->
+        {:error, :collides}
+
+      true ->
+        max_height =
+          piece.coordinates
+          |> Stream.map(&Coords.y/1)
+          |> Enum.max()
+          |> max(stack.max_height)
+
+        pieces = [{piece, value} | stack.pieces]
+
+        mask = Enum.reduce(piece.coordinates, stack.mask, &MapSet.put(&2, &1))
+
+        {:ok, %__MODULE__{stack | max_height: max_height, pieces: pieces, mask: mask}}
+    end
+  end
+end
+```
+
+## Part 1
+
+```elixir
+build_stack = fn count ->
+  Stream.cycle(pieces)
+  |> Stream.with_index()
+  |> Stream.take(count)
+  |> Enum.reduce({Stack.new(7), 0}, fn {piece, piece_index}, {stack, jet_index} ->
+    position = {2, stack.max_height + 4}
+    piece = Piece.at(piece, position)
+
+    {piece, jet_count} =
+      Stream.iterate(0, & &1)
+      |> Enum.reduce_while({piece, jet_index}, fn _, {piece, jet_count} ->
+        jet = Map.get(jets, Integer.mod(jet_count, jets_length))
+        jet_count = jet_count + 1
+        piece = Stack.shift_piece(stack, piece, jet)
+
+        case Stack.drop_piece(stack, piece) do
+          {:ok, piece} ->
+            {:cont, {piece, jet_count}}
+
+          {:resting, piece} ->
+            {:halt, {piece, jet_count}}
+        end
+      end)
+
+    value = {piece_index, Integer.mod(jet_index, jets_length)}
+    {:ok, stack} = Stack.add_piece(stack, piece, value)
+
+    {stack, jet_count}
+  end)
+end
+
+{stack, _} = build_stack.(2022)
+
+stack.max_height
+```
+
+## Part 2
+
+```elixir
+defmodule P2 do
+  def pieces(pieces) do
+    pieces
+    |> Stream.map(fn {%Piece{} = piece, {index, jet_index}} ->
+      {index, {piece, jet_index}}
+    end)
+    |> Map.new()
+  end
+
+  defp cycle_value({piece, jet_index}),
+    do: {piece.type, Coords.x(piece.origin), jet_index}
+
+  def detect_cycle(pieces, start \\ 0) do
+    start..(Enum.count(pieces) - 1)
+    |> Enum.reduce_while(Map.new(), fn index, acc ->
+      value = Map.get(pieces, index) |> cycle_value()
+      found = Map.get(acc, value)
+
+      case found do
+        nil -> {:cont, Map.put(acc, value, index)}
+        cycle_index -> {:halt, %{start: cycle_index, length: index - cycle_index}}
+      end
+    end)
+  end
+end
+```
+
+`P2.detect_cycle/2` is extremely simplistic and may not work with all inputs as it doesn't take the stack itself into account.
+
+In order to make it work I look for cycles starting on consecutive pieces which, again, is extremely simplistic but works on the sample input and my input.
+
+```elixir
+pieces = P2.pieces(stack.pieces)
+
+cycle =
+  Stream.iterate(0, & &1)
+  |> Enum.reduce_while(%{start: -1}, fn _, %{start: previous} ->
+    %{start: start} = cycle = P2.detect_cycle(pieces, previous + 1)
+
+    cond do
+      start == previous + 1 ->
+        {:halt, cycle}
+
+      true ->
+        {:cont, cycle}
+    end
+  end)
+
+cycle_y = Map.get(pieces, cycle.start) |> elem(0) |> Map.get(:origin) |> Coords.y()
+
+cycle_height =
+  (Map.get(pieces, cycle.start + cycle.length) |> elem(0) |> Map.get(:origin) |> Coords.y()) -
+    cycle_y
+```
+
+```elixir
+last_index = Integer.mod(1_000_000_000_000 - cycle.start, cycle.length) + cycle.start - 1
+last_piece = Map.get(pieces, last_index) |> elem(0)
+max_height = last_piece.coordinates |> Stream.map(&Coords.y/1) |> Enum.max()
+cycle_count = Integer.floor_div(1_000_000_000_000 - cycle.start, cycle.length)
+max_height + cycle_count * cycle_height
+```
+
+Again may not work with all inputs. The last piece may not be the highest one. I got lucky that it works with the sample input and my input.
+
+A foolproof yet somewhat expensive way to get the max height would be to
+generate a new stack with the correct number of pieces and take its maximum height.
+
+```elixir
+alias VegaLite, as: Vl
+
+Vl.new()
+|> Vl.config(
+  view: [step: 10],
+  axis: [
+    ticks: false,
+    labels: false
+  ]
+)
+|> Vl.datasets_from_values(
+  pieces:
+    stack.pieces
+    |> Enum.flat_map(fn {%Piece{} = piece, {index, _}} ->
+      piece.coordinates
+      |> Stream.map(fn {x, y} ->
+        %{x: x, y: y, type: piece.type, index: index, tooltip: "#{index}; (#{x}, #{y})"}
+      end)
+    end),
+  cycle: [
+    %{y: Map.get(pieces, cycle.start) |> elem(0) |> Map.get(:origin) |> Coords.y()},
+    %{y: Map.get(pieces, cycle.start + cycle.length) |> elem(0) |> Map.get(:origin) |> Coords.y()}
+  ]
+)
+|> Vl.layers([
+  Vl.new()
+  |> Vl.data(name: :pieces)
+  |> Vl.mark(:rect)
+  |> Vl.encode_field(:x, "y", type: :ordinal)
+  |> Vl.encode_field(:y, "x", type: :ordinal, scale: [reverse: false])
+  |> Vl.encode_field(:color, "type", type: :nominal)
+  |> Vl.encode_field(:tooltip, "tooltip"),
+  Vl.new()
+  |> Vl.data(name: :cycle)
+  |> Vl.mark(:rule, color: "red")
+  |> Vl.encode_field(:x, "y", type: :ordinal)
+])
+```
+
+This visualisation is extremely wide.
