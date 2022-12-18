@@ -158,20 +158,35 @@ defmodule P2 do
     |> MapSet.new()
   end
 
-  defp flood(cubes, box, from, outside? \\ false, visited \\ MapSet.new()) do
-    init = {
-      outside? || BoundingBox.on_edge?(box, from),
-      MapSet.put(visited, from)
-    }
+  defp flood_bfs(_cubes, _box, [], outside?, visited) do
+    {outside?, visited}
+  end
 
-    Cube.neighbors(from)
-    |> Stream.filter(fn neighbor ->
-      MapSet.member?(cubes, neighbor) &&
-        !MapSet.member?(visited, neighbor)
-    end)
-    |> Enum.reduce(init, fn neighbor, {outside?, visited} ->
-      flood(cubes, box, neighbor, outside?, visited)
-    end)
+  defp flood_bfs(cubes, box, front, outside?, visited) do
+    visited =
+      front
+      |> MapSet.new()
+      |> MapSet.union(visited)
+
+    {outside?, front} =
+      front
+      |> Enum.reduce({outside?, MapSet.new()}, fn cube, {outside?, front} ->
+        {
+          outside? || BoundingBox.on_edge?(box, cube),
+          Cube.neighbors(cube)
+          |> Stream.filter(&(&1 in cubes))
+          |> Stream.filter(&BoundingBox.contains?(box, &1))
+          |> Stream.filter(&(&1 not in visited))
+          |> MapSet.new()
+          |> MapSet.union(front)
+        }
+      end)
+
+    flood_bfs(cubes, box, Enum.to_list(front), outside?, visited)
+  end
+
+  defp flood(cubes, box, from) do
+    flood_bfs(cubes, box, [from], false, MapSet.new())
   end
 
   def empty(cubes, box) do
@@ -184,6 +199,8 @@ defmodule P2 do
         from = Enum.take(remaining, 1) |> List.first()
         {outside?, visited} = flood(remaining, box, from)
         remaining = MapSet.difference(remaining, visited)
+
+        IO.inspect({outside?, Enum.count(visited)})
 
         continue =
           if Enum.empty?(remaining) do
