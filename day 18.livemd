@@ -1,0 +1,217 @@
+# Advent of Code 2022 - 18
+
+```elixir
+Mix.install([{:kino, "~> 0.7.0"}])
+```
+
+## Input
+
+```elixir
+input = Kino.Input.textarea("Input")
+```
+
+```elixir
+defmodule Cube do
+  @enforce_keys [:x, :y, :z]
+  defstruct [:x, :y, :z]
+
+  def new(x, y, z), do: %__MODULE__{x: x, y: y, z: z}
+
+  def neighbors(%__MODULE__{} = cube),
+    do: [
+      %__MODULE__{cube | x: cube.x - 1},
+      %__MODULE__{cube | x: cube.x + 1},
+      %__MODULE__{cube | y: cube.y - 1},
+      %__MODULE__{cube | y: cube.y + 1},
+      %__MODULE__{cube | z: cube.z - 1},
+      %__MODULE__{cube | z: cube.z + 1}
+    ]
+
+  def faces(%__MODULE__{} = cube),
+    do: [
+      {cube.x, cube.y, cube.z, :x},
+      {cube.x, cube.y, cube.z, :y},
+      {cube.x, cube.y, cube.z, :z},
+      {cube.x - 1, cube.y, cube.z, :x},
+      {cube.x, cube.y - 1, cube.z, :y},
+      {cube.x, cube.y, cube.z - 1, :z}
+    ]
+end
+```
+
+```elixir
+defmodule BoundingBox do
+  @enforce_keys [:min_x, :max_x, :min_y, :max_y, :min_z, :max_z]
+  defstruct [:min_x, :max_x, :min_y, :max_y, :min_z, :max_z]
+
+  def new(min_x, max_x, min_y, max_y, min_z, max_z),
+    do: %__MODULE__{
+      min_x: min(min_x, max_y),
+      max_x: max(min_x, max_x),
+      min_y: min(min_y, max_y),
+      max_y: max(min_y, max_y),
+      min_z: min(min_z, max_z),
+      max_z: max(min_z, max_z)
+    }
+
+  def new({min_x, max_x, min_y, max_y, min_z, max_z}),
+    do: new(min_x, max_x, min_y, max_y, min_z, max_z)
+
+  def contains?(%__MODULE__{} = box, %Cube{} = cube),
+    do:
+      cube.x in box.min_x..box.max_x &&
+        cube.y in box.min_y..box.max_y &&
+        cube.z in box.min_z..box.max_z
+
+  def on_edge?(%__MODULE__{} = box, %Cube{} = cube),
+    do:
+      cube.x == box.min_x || cube.x == box.max_x ||
+        cube.y == box.min_y || cube.y == box.max_y ||
+        cube.z == box.min_z || cube.z == box.max_z
+
+  def expand(%__MODULE__{} = box, amount \\ 1),
+    do: %__MODULE__{
+      min_x: box.min_x - 1,
+      max_x: box.max_x + 1,
+      min_y: box.min_y - 1,
+      max_y: box.max_y + 1,
+      min_z: box.min_z - 1,
+      max_z: box.max_z + 1
+    }
+end
+```
+
+```elixir
+cubes =
+  Kino.Input.read(input)
+  |> String.split("\n", trim: true)
+  |> Stream.map(fn line ->
+    line
+    |> String.split(",", parts: 3)
+    |> Enum.map(&String.to_integer/1)
+  end)
+  |> Enum.map(fn [x, y, z] -> Cube.new(x, y, z) end)
+  |> MapSet.new()
+```
+
+```elixir
+bounding_box =
+  cubes
+  |> Enum.reduce(nil, fn
+    cube, nil ->
+      {cube.x, cube.x, cube.y, cube.y, cube.z, cube.z}
+
+    cube, {min_x, max_x, min_y, max_y, min_z, max_z} ->
+      {
+        min(min_x, cube.x),
+        max(max_x, cube.x),
+        min(min_y, cube.y),
+        max(max_y, cube.y),
+        min(min_z, cube.z),
+        max(max_z, cube.z)
+      }
+  end)
+  |> BoundingBox.new()
+```
+
+## Part 1
+
+```elixir
+defmodule P1 do
+  def faces(cubes) do
+    cubes
+    |> Stream.flat_map(&Cube.faces/1)
+    |> Enum.reduce(Map.new(), fn face, acc ->
+      Map.update(acc, face, 1, &(&1 + 1))
+    end)
+  end
+end
+```
+
+```elixir
+cubes
+|> P1.faces()
+|> Stream.filter(&(elem(&1, 1) == 1))
+|> Enum.count()
+```
+
+## Part 2
+
+```elixir
+defmodule P2 do
+  defp all_cubes(box) do
+    box.min_x..box.max_x
+    |> Stream.flat_map(fn x ->
+      box.min_y..box.max_y
+      |> Stream.flat_map(fn y ->
+        box.min_z..box.max_z
+        |> Stream.map(fn z ->
+          Cube.new(x, y, z)
+        end)
+      end)
+    end)
+  end
+
+  defp all_empty_cubes(cubes, box) do
+    all_cubes(box)
+    |> Stream.filter(&(!MapSet.member?(cubes, &1)))
+    |> MapSet.new()
+  end
+
+  defp flood(cubes, box, from, outside? \\ false, visited \\ MapSet.new()) do
+    init = {
+      outside? || BoundingBox.on_edge?(box, from),
+      MapSet.put(visited, from)
+    }
+
+    Cube.neighbors(from)
+    |> Stream.filter(fn neighbor ->
+      MapSet.member?(cubes, neighbor) &&
+        !MapSet.member?(visited, neighbor)
+    end)
+    |> Enum.reduce(init, fn neighbor, {outside?, visited} ->
+      flood(cubes, box, neighbor, outside?, visited)
+    end)
+  end
+
+  def empty(cubes, box) do
+    empty_cubes = all_empty_cubes(cubes, box)
+
+    Stream.iterate(0, & &1)
+    |> Enum.reduce_while(
+      {MapSet.new(), MapSet.new(), empty_cubes},
+      fn _, {outside, inside, remaining} ->
+        from = Enum.take(remaining, 1) |> List.first()
+        {outside?, visited} = flood(remaining, box, from)
+        remaining = MapSet.difference(remaining, visited)
+
+        continue =
+          if Enum.empty?(remaining) do
+            :halt
+          else
+            :cont
+          end
+
+        if outside? do
+          {continue, {MapSet.union(outside, visited), inside, remaining}}
+        else
+          {continue, {outside, MapSet.union(inside, visited), remaining}}
+        end
+      end
+    )
+    |> Tuple.delete_at(2)
+  end
+end
+```
+
+```elixir
+{_outside, inside} = P2.empty(cubes, bounding_box)
+```
+
+```elixir
+cubes
+|> MapSet.union(inside)
+|> P1.faces()
+|> Stream.filter(&(elem(&1, 1) == 1))
+|> Enum.count()
+```
