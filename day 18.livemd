@@ -19,12 +19,12 @@ defmodule Cube do
 
   def neighbors(%__MODULE__{} = cube),
     do: [
-      %__MODULE__{cube | x: cube.x - 1},
-      %__MODULE__{cube | x: cube.x + 1},
-      %__MODULE__{cube | y: cube.y - 1},
-      %__MODULE__{cube | y: cube.y + 1},
-      %__MODULE__{cube | z: cube.z - 1},
-      %__MODULE__{cube | z: cube.z + 1}
+      %{cube | x: cube.x - 1},
+      %{cube | x: cube.x + 1},
+      %{cube | y: cube.y - 1},
+      %{cube | y: cube.y + 1},
+      %{cube | z: cube.z - 1},
+      %{cube | z: cube.z + 1}
     ]
 
   def faces(%__MODULE__{} = cube),
